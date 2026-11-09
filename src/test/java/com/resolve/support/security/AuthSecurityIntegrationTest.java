@@ -68,7 +68,7 @@ class AuthSecurityIntegrationTest {
 
     @Test
     void openApiAndSwaggerUiArePublicAndExposeJwtSecurityWithoutOpeningApiRoutes() throws Exception {
-        mockMvc.perform(get("/v3/api-docs").accept(MediaType.APPLICATION_JSON))
+        String openApiJson = mockMvc.perform(get("/v3/api-docs").accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.info.title").value("Resolve Support Ticket Management API"))
                 .andExpect(jsonPath("$.info.version").value("1.0.0"))
@@ -80,9 +80,15 @@ class AuthSecurityIntegrationTest {
                 .andExpect(jsonPath("$.paths['/api/v1/auth/register'].post.security").doesNotExist())
                 .andExpect(jsonPath("$.paths['/api/v1/auth/login'].post.security").doesNotExist())
                 .andExpect(jsonPath("$.components.schemas.UserResponse.properties.password").doesNotExist())
-                .andExpect(jsonPath("$.components.schemas.UserRole.enum").isArray())
                 .andExpect(jsonPath("$.components.schemas.TicketStatus.enum").isArray())
-                .andExpect(jsonPath("$.components.schemas.TicketPriority.enum").isArray());
+                .andExpect(jsonPath("$.components.schemas.TicketPriority.enum").isArray())
+                .andReturn().getResponse().getContentAsString();
+
+        JsonNode openApi = objectMapper.readTree(openApiJson);
+        assertRoleEnum(openApi, "UserResponse");
+        assertRoleEnum(openApi, "UserSummaryResponse");
+        assertRoleEnum(openApi, "CreateUserRequest");
+        assertRoleEnum(openApi, "UpdateUserRoleRequest");
 
         var swaggerEntry = mockMvc.perform(get("/swagger-ui.html")).andReturn();
         assertThat(swaggerEntry.getResponse().getStatus()).isGreaterThanOrEqualTo(200).isLessThan(400);
@@ -92,6 +98,18 @@ class AuthSecurityIntegrationTest {
                         .contentTypeCompatibleWith("text/html"));
         mockMvc.perform(get("/api/v1/tickets"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    private void assertRoleEnum(JsonNode openApi, String schemaName) {
+        JsonNode roleSchema = openApi.at("/components/schemas/" + schemaName + "/properties/role");
+        assertThat(roleSchema.isMissingNode()).as("%s.role is documented", schemaName).isFalse();
+        if (roleSchema.hasNonNull("$ref")) {
+            String componentName = roleSchema.get("$ref").asText().substring("#/components/schemas/".length());
+            roleSchema = openApi.at("/components/schemas/" + componentName.replace("~1", "/").replace("~0", "~"));
+        }
+        assertThat(roleSchema.path("enum").isArray()).as("%s.role enum is documented", schemaName).isTrue();
+        assertThat(objectMapper.convertValue(roleSchema.path("enum"), java.util.List.class))
+                .containsExactly("USER", "AGENT", "ADMIN");
     }
 
     @Test
