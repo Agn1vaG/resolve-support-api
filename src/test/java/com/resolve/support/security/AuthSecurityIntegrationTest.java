@@ -80,15 +80,23 @@ class AuthSecurityIntegrationTest {
                 .andExpect(jsonPath("$.paths['/api/v1/auth/register'].post.security").doesNotExist())
                 .andExpect(jsonPath("$.paths['/api/v1/auth/login'].post.security").doesNotExist())
                 .andExpect(jsonPath("$.components.schemas.UserResponse.properties.password").doesNotExist())
-                .andExpect(jsonPath("$.components.schemas.TicketStatus.enum").isArray())
-                .andExpect(jsonPath("$.components.schemas.TicketPriority.enum").isArray())
                 .andReturn().getResponse().getContentAsString();
 
         JsonNode openApi = objectMapper.readTree(openApiJson);
-        assertRoleEnum(openApi, "UserResponse");
-        assertRoleEnum(openApi, "UserSummaryResponse");
-        assertRoleEnum(openApi, "CreateUserRequest");
-        assertRoleEnum(openApi, "UpdateUserRoleRequest");
+        assertEnum(openApi, "UserResponse", "role", "USER", "AGENT", "ADMIN");
+        assertEnum(openApi, "UserSummaryResponse", "role", "USER", "AGENT", "ADMIN");
+        assertEnum(openApi, "CreateUserRequest", "role", "USER", "AGENT", "ADMIN");
+        assertEnum(openApi, "UpdateUserRoleRequest", "role", "USER", "AGENT", "ADMIN");
+        assertEnum(openApi, "CreateTicketRequest", "status", "OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED");
+        assertEnum(openApi, "ChangeTicketStatusRequest", "status", "OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED");
+        assertEnum(openApi, "TicketResponse", "status", "OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED");
+        assertEnum(openApi, "TicketSummaryResponse", "status", "OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED");
+        assertEnum(openApi, "TicketHistoryResponse", "oldStatus", "OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED");
+        assertEnum(openApi, "TicketHistoryResponse", "newStatus", "OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED");
+        assertEnum(openApi, "CreateTicketRequest", "priority", "LOW", "MEDIUM", "HIGH", "URGENT");
+        assertEnum(openApi, "UpdateTicketRequest", "priority", "LOW", "MEDIUM", "HIGH", "URGENT");
+        assertEnum(openApi, "TicketResponse", "priority", "LOW", "MEDIUM", "HIGH", "URGENT");
+        assertEnum(openApi, "TicketSummaryResponse", "priority", "LOW", "MEDIUM", "HIGH", "URGENT");
 
         var swaggerEntry = mockMvc.perform(get("/swagger-ui.html")).andReturn();
         assertThat(swaggerEntry.getResponse().getStatus()).isGreaterThanOrEqualTo(200).isLessThan(400);
@@ -100,16 +108,17 @@ class AuthSecurityIntegrationTest {
                 .andExpect(status().isUnauthorized());
     }
 
-    private void assertRoleEnum(JsonNode openApi, String schemaName) {
-        JsonNode roleSchema = openApi.at("/components/schemas/" + schemaName + "/properties/role");
-        assertThat(roleSchema.isMissingNode()).as("%s.role is documented", schemaName).isFalse();
-        if (roleSchema.hasNonNull("$ref")) {
-            String componentName = roleSchema.get("$ref").asText().substring("#/components/schemas/".length());
-            roleSchema = openApi.at("/components/schemas/" + componentName.replace("~1", "/").replace("~0", "~"));
+    private void assertEnum(JsonNode openApi, String schemaName, String propertyName, String... expectedValues) {
+        JsonNode enumSchema = openApi.at("/components/schemas/" + schemaName + "/properties/" + propertyName);
+        assertThat(enumSchema.isMissingNode()).as("%s.%s is documented", schemaName, propertyName).isFalse();
+        if (enumSchema.hasNonNull("$ref")) {
+            String componentName = enumSchema.get("$ref").asText().substring("#/components/schemas/".length());
+            enumSchema = openApi.at("/components/schemas/" + componentName.replace("~1", "/").replace("~0", "~"));
         }
-        assertThat(roleSchema.path("enum").isArray()).as("%s.role enum is documented", schemaName).isTrue();
-        assertThat(objectMapper.convertValue(roleSchema.path("enum"), java.util.List.class))
-                .containsExactly("USER", "AGENT", "ADMIN");
+        assertThat(enumSchema.path("enum").isArray())
+                .as("%s.%s enum is documented", schemaName, propertyName).isTrue();
+        assertThat(objectMapper.convertValue(enumSchema.path("enum"), java.util.List.class))
+                .containsExactly((Object[]) expectedValues);
     }
 
     @Test
