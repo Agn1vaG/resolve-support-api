@@ -1,73 +1,159 @@
-# API Endpoints
+# API Endpoints and Interactive Documentation
 
-All endpoints use JSON and the `/api/v1` prefix. Registration, login, and `/actuator/health` are public. Other routes require `Authorization: Bearer <accessToken>`.
+The OpenAPI document is available at `http://localhost:8080/v3/api-docs`; Swagger UI is at `http://localhost:8080/swagger-ui.html`. Swagger UI uses the same OpenAPI schemas and examples documented below. The docs resources are public, while application endpoints remain protected by the existing Spring Security rules.
 
-## Role permissions
+## Use JWT authorization in Swagger UI
+
+1. Call `POST /api/v1/auth/register` to create a USER account.
+2. Call `POST /api/v1/auth/login` with that account's credentials.
+3. Copy the `accessToken` value from the response.
+4. Select **Authorize** in Swagger UI and paste the token value without adding `Bearer `.
+5. Confirm authorization and call protected routes. Swagger UI adds the `Authorization: Bearer <token>` header.
+
+Tokens expire according to `JWT_EXPIRATION_MS` (15 minutes by default). Registration and login do not require a token. Logging in as AGENT or ADMIN requires an account provisioned by an administrator; there are no demo credentials or seeded accounts.
+
+## Roles and enums
+
+| Enum | Values |
+|---|---|
+| `UserRole` | `USER`, `AGENT`, `ADMIN` |
+| `TicketStatus` | `OPEN`, `IN_PROGRESS`, `RESOLVED`, `CLOSED` |
+| `TicketPriority` | `LOW`, `MEDIUM`, `HIGH`, `URGENT` |
+| `TicketHistoryEventType` | `TICKET_CREATED`, `STATUS_CHANGED`, `ASSIGNED`, `UNASSIGNED`, `REASSIGNED` |
 
 | Operation | USER | AGENT | ADMIN |
 |---|---|---|---|
-| Create ticket | Yes | No | Yes |
+| Create tickets | Yes | No | Yes |
 | Read tickets | Own | Assigned to self | All |
-| Change ticket details or priority | No | No | Any |
+| Update details or priority | No | No | Any |
 | Change status | No | Assigned to self | Any |
-| Assign or unassign | No | No | Any; assignee must be AGENT |
-| Comment / read history | Own tickets | Assigned tickets | Any |
-| Administer users and roles | No | No | Yes |
+| Assign / reassign / unassign | No | No | Any; target must be an AGENT |
+| Add comments / read comments and history | Own tickets | Assigned tickets | Any |
+| Administer accounts and roles | No | No | Yes |
 
-Actor identity comes from the authenticated account. Request bodies cannot set the ticket creator, comment author, or history actor.
+Identity for ticket creation, comment authorship, and history events comes from the authenticated account, never from a request body.
 
 ## Authentication
 
-### Register — `POST /api/v1/auth/register`
+### `POST /api/v1/auth/register`
 
-Request: `{"name":"Ari Example","email":"ari@example.com","password":"SecurePass123"}`
+Publicly registers a USER account. Password is hashed and never returned.
 
-Returns a safe user response with `201 Created`; public registrations always receive `USER`. Duplicate email returns `409`, invalid input `400`.
+Request:
 
-### Login — `POST /api/v1/auth/login`
+```json
+{"name":"Ari Example","email":"ari@example.com","password":"SecurePass123"}
+```
 
-Request: `{"email":"ari@example.com","password":"SecurePass123"}`. Success returns `200 OK` with `accessToken`, `tokenType`, `expiresIn`, and safe user information. Invalid credentials return a generic `401`.
+Returns `201 Created` with `UserResponse`. Invalid input returns `400`; duplicate email returns `409`.
 
-## Users
+### `POST /api/v1/auth/login`
 
-| Method and endpoint | Permission | Request / result |
-|---|---|---|
-| `POST /api/v1/users` | ADMIN | Create account with `name`, `email`, `password`, optional role. `201`, safe `UserResponse`. |
-| `GET /api/v1/users/{id}` | Own user or ADMIN | Safe `UserResponse`; `200`. |
-| `GET /api/v1/users?page=0&size=20&sort=createdAt,desc` | ADMIN | Paginated safe user responses; `200`. |
-| `GET /api/v1/admin/users?page=0&size=20` | ADMIN | Paginated user management list; `200`. |
-| `GET /api/v1/admin/users/{id}` | ADMIN | Safe user response; `200`. |
-| `PATCH /api/v1/admin/users/{id}/role` | ADMIN | `{"role":"AGENT"}` or `{"role":"USER"}`; returns safe user response, `200`. ADMIN cannot be assigned here. |
+Publicly authenticates credentials and returns a JWT.
+
+Request:
+
+```json
+{"email":"ari@example.com","password":"SecurePass123"}
+```
+
+Response (`200 OK`):
+
+```json
+{
+  "accessToken":"<signed-jwt>",
+  "tokenType":"Bearer",
+  "expiresIn":900,
+  "user":{"id":1,"name":"Ari Example","email":"ari@example.com","role":"USER","createdAt":"2026-11-09T10:00:00Z","updatedAt":"2026-11-09T10:00:00Z"}
+}
+```
+
+Invalid credentials return a generic `401 Unauthorized` response.
 
 ## Tickets
 
-| Method and endpoint | Permission | Request / result |
+| Method and path | Access | Request / result |
 |---|---|---|
-| `POST /api/v1/tickets` | USER or ADMIN | `title` (max 200), `description` (max 10000), optional `priority`, optional admin-only `assigneeId`; status starts `OPEN`. `201` with `TicketResponse`. |
-| `GET /api/v1/tickets/{id}` | Creator, assigned agent, or ADMIN | `TicketResponse`; `200`. |
-| `GET /api/v1/tickets` | Authenticated; role scoped | Paginated ticket summaries; `200`. |
-| `PUT /api/v1/tickets/{id}` | ADMIN | Partial `title` (max 200), `description` (max 10000), and/or `priority`; omitted values are preserved. `200`. |
-| `PATCH /api/v1/tickets/{id}/assign` | ADMIN | Assign: `{"agentId":42}`; unassign: `{"agentId":null}`. Returns updated ticket, `200`. |
-| `PATCH /api/v1/tickets/{id}/status` | ADMIN or assigned AGENT | `{"status":"IN_PROGRESS"}`; returns updated ticket, `200`. |
-| `GET /api/v1/tickets/created-by/{userId}` | Own user or ADMIN | Paginated ticket summaries; `200`. |
-| `GET /api/v1/tickets/assigned-to/{agentId}` | Own agent queue or ADMIN | Paginated ticket summaries; `200`. |
+| `POST /api/v1/tickets` | USER, ADMIN | `CreateTicketRequest`; creator from JWT. Returns `TicketResponse`, `201`. |
+| `GET /api/v1/tickets/{id}` | Creator, assigned agent, ADMIN | Returns `TicketResponse`, `200`. |
+| `GET /api/v1/tickets` | Authenticated, role-scoped | `page`, `size` (max 100), `sort`, optional `status`, `priority`, `assigneeId`, `creatorId`, `createdFrom`, `createdTo`. Returns a page of summaries, `200`. |
+| `PUT /api/v1/tickets/{id}` | ADMIN | Partial `title`, `description`, and/or `priority`; omitted fields stay unchanged. Returns `TicketResponse`, `200`. |
+| `PATCH /api/v1/tickets/{id}/assign` | ADMIN | `{"agentId":42}` to assign or `{"agentId":null}` to unassign. Returns `TicketResponse`, `200`. |
+| `PATCH /api/v1/tickets/{id}/status` | ADMIN, assigned AGENT | `{"status":"IN_PROGRESS"}`. Returns `TicketResponse`, `200`. |
+| `GET /api/v1/tickets/created-by/{userId}` | Own USER id, ADMIN | Paged ticket summaries, `200`; page size max 100. |
+| `GET /api/v1/tickets/assigned-to/{agentId}` | Own AGENT id, ADMIN | Paged ticket summaries, `200`; page size max 100. |
 
-Ticket list query parameters include `page`, `size`, repeatable `sort=createdAt,desc`, `status`, `priority`, `assigneeId`, `creatorId`, `createdFrom`, and `createdTo` (ISO-8601 instants). Filters are applied in the database. USER and AGENT results remain scoped to their own tickets regardless of query parameters. Defaults are page 0, size 20, sort by `createdAt` ascending; requested page sizes are capped at 100.
+Ticket request example:
 
-Status transitions: `OPEN -> IN_PROGRESS`; `IN_PROGRESS -> RESOLVED` or `OPEN`; `RESOLVED -> CLOSED` or `IN_PROGRESS`. `CLOSED` is terminal. Repeating the current status succeeds as a no-op without a duplicate history entry. Invalid transitions return `400`; inaccessible operations return `403`; missing resources return `404`.
+```json
+{"title":"Cannot sign in","description":"Login fails after password reset","priority":"HIGH"}
+```
 
-Assignment rejects missing accounts (`404`) and non-AGENT targets (`400`). Reassignment and explicit unassignment are allowed. Each actual change updates `updatedAt` and creates an audit event.
+Ticket response example:
 
-## Comments and history
+```json
+{
+  "id":42,"title":"Cannot sign in","description":"Login fails after password reset",
+  "status":"OPEN","priority":"HIGH",
+  "creator":{"id":1,"name":"Ari Example","role":"USER"},
+  "assignee":null,"createdAt":"2026-11-09T10:00:00Z","updatedAt":"2026-11-09T10:00:00Z"
+}
+```
 
-| Method and endpoint | Permission | Request / result |
+The status transition rules are `OPEN -> IN_PROGRESS`, `IN_PROGRESS -> RESOLVED|OPEN`, and `RESOLVED -> CLOSED|IN_PROGRESS`; `CLOSED` is terminal. Repeating the current status is a no-op. Invalid transitions return `400`. Invalid enum and date values also return `400`. USER and AGENT list queries remain scoped to their own tickets even when filters are supplied.
+
+## Comments
+
+| Method and path | Access | Request / result |
 |---|---|---|
-| `POST /api/v1/tickets/{ticketId}/comments` | Ticket creator, assigned agent, or ADMIN | `{"message":"I restarted the device."}` (nonblank, max 5000 chars); author comes from token. `201` with author and creation time. |
-| `GET /api/v1/tickets/{ticketId}/comments` | Ticket creator, assigned agent, or ADMIN | Chronological comments; `200`. |
-| `GET /api/v1/tickets/{ticketId}/history` | Ticket creator, assigned agent, or ADMIN | Append-only history events; `200`. |
+| `POST /api/v1/tickets/{ticketId}/comments` | Ticket creator, assigned agent, ADMIN | `{"message":"I restarted the device and can sign in now."}`; nonblank, max 5000 chars. Returns `CommentResponse`, `201`. |
+| `GET /api/v1/tickets/{ticketId}/comments` | Ticket creator, assigned agent, ADMIN | Chronological comment list, `200`. |
 
-The history includes `TICKET_CREATED` (`oldStatus: null`, `newStatus: OPEN`), `STATUS_CHANGED` with actor and before/after status, and `ASSIGNED`, `REASSIGNED`, or `UNASSIGNED` with prior/new agent values. Status and assignment writes plus their history row are transactional. There are no public history write/edit endpoints.
+The author is always the authenticated user. A response includes `id`, `message`, `ticketId`, `author`, `createdAt`, and `updatedAt`.
 
-## Errors
+## Ticket History
 
-Errors contain `timestamp`, `status`, `error`, `message`, `path`, and optional `validationErrors`. API responses do not include stack traces, database internals, secrets, or token contents. Expected statuses include `400`, `401`, `403`, `404`, and `409`.
+| Method and path | Access | Request / result |
+|---|---|---|
+| `GET /api/v1/tickets/{ticketId}/history` | Ticket creator, assigned agent, ADMIN | Chronological read-only audit entries, `200`. |
+
+History records ticket creation, status transitions, and assignment changes, including actor, before/after status or agent, and timestamp. There are no public write or edit endpoints for history.
+
+## Administration
+
+| Method and path | Access | Request / result |
+|---|---|---|
+| `POST /api/v1/users` | ADMIN | Create an account using `CreateUserRequest`; returns safe `UserResponse`, `201`. |
+| `GET /api/v1/users/{id}` | Own profile, ADMIN | Safe `UserResponse`, `200`. |
+| `GET /api/v1/users` | ADMIN | Paged safe user list, `200`; page size max 100. |
+| `GET /api/v1/admin/users` | ADMIN | Paged safe user list, `200`; page size max 100. |
+| `GET /api/v1/admin/users/{id}` | ADMIN | Safe `UserResponse`, `200`. |
+| `PATCH /api/v1/admin/users/{id}/role` | ADMIN | `{"role":"AGENT"}` or `{"role":"USER"}`; returns safe `UserResponse`, `200`. Cannot assign ADMIN. |
+
+No user response includes a password or password hash. Role update rejects ADMIN; a sole administrator cannot demote their own account.
+
+## Error response
+
+All errors use the existing `ApiErrorResponse` format:
+
+```json
+{
+  "timestamp":"2026-11-09T10:00:00Z",
+  "status":400,
+  "error":"Bad Request",
+  "message":"Request validation failed.",
+  "path":"/api/v1/tickets",
+  "validationErrors":{"title":"must not be blank"}
+}
+```
+
+| Status | Meaning |
+|---|---|
+| `400 Bad Request` | Invalid body, parameter, enum, or business rule |
+| `401 Unauthorized` | Missing/invalid/expired JWT or invalid login credentials |
+| `403 Forbidden` | Authenticated caller lacks role or resource access |
+| `404 Not Found` | Requested resource does not exist |
+| `409 Conflict` | Duplicate email or conflicting database constraint |
+| `500 Internal Server Error` | Unexpected failure; details are kept out of the response |
+
+Errors do not expose stack traces, database messages, password hashes, secrets, or JWT values.

@@ -96,6 +96,16 @@ curl -i -X POST http://localhost:8080/api/v1/auth/login -H "Content-Type: applic
 
 Send the returned token on protected endpoints using `Authorization: Bearer <accessToken>`. The default lifetime is 900 seconds. Do not log or commit the token. `POST /api/v1/users`, `GET /api/v1/users`, and role management are admin-only; bootstrap an initial admin directly in a trusted local database with a BCrypt hash, or add a dedicated provisioning process before deployment. Never expose a public admin registration path.
 
+## Swagger UI and JWT demonstrations
+
+After the application starts, open [Swagger UI](http://localhost:8080/swagger-ui.html). The machine-readable OpenAPI document is available at [OpenAPI JSON](http://localhost:8080/v3/api-docs). The Swagger UI and OpenAPI paths are public; API routes keep their normal authentication and role rules.
+
+To exercise USER access, register and log in through the Authentication tag. Copy `accessToken`, select **Authorize**, and paste the raw token (without `Bearer `). Use the Tickets tag to create and list the user's tickets, then use Comments and Ticket History for the ticket id. Swagger UI sends the Bearer header on protected calls.
+
+For AGENT demonstrations, an admin must first provision an AGENT account and assign a ticket. Log in as that agent, authorize Swagger UI with the agent token, then try assigned-ticket reads, status transitions, comments, and history. For ADMIN demonstrations, provision and log in as an admin to use the Administration tag, assign/reassign tickets, and inspect broader ticket lists. There are no seeded demo users or production credentials.
+
+If a new token is needed for another role, select **Authorize**, log in as that account, and replace the token. Clear authorization when finished; never paste a real production token into a shared environment.
+
 ## Existing Phase 4 account data
 
 Phase 4 temporarily stored submitted passwords without hashing. Phase 5 login uses BCrypt and will not authenticate those old plaintext values. Delete those development-only accounts and register them again, or provide a controlled password reset before using the data. No automatic plaintext-to-hash migration is performed because the original passwords should not be retained as credentials.

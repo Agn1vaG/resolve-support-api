@@ -67,6 +67,34 @@ class AuthSecurityIntegrationTest {
     @Autowired PasswordEncoder passwordEncoder;
 
     @Test
+    void openApiAndSwaggerUiArePublicAndExposeJwtSecurityWithoutOpeningApiRoutes() throws Exception {
+        mockMvc.perform(get("/v3/api-docs").accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.info.title").value("Resolve Support Ticket Management API"))
+                .andExpect(jsonPath("$.info.version").value("1.0.0"))
+                .andExpect(jsonPath("$.info.description").value("REST API for support ticket creation, assignment, management, comments, authentication, and role-based access control."))
+                .andExpect(jsonPath("$.components.securitySchemes.bearerAuth.type").value("http"))
+                .andExpect(jsonPath("$.components.securitySchemes.bearerAuth.scheme").value("bearer"))
+                .andExpect(jsonPath("$.components.securitySchemes.bearerAuth.bearerFormat").value("JWT"))
+                .andExpect(jsonPath("$.paths['/api/v1/tickets'].post.security[0].bearerAuth").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/auth/register'].post.security").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/v1/auth/login'].post.security").doesNotExist())
+                .andExpect(jsonPath("$.components.schemas.UserResponse.properties.password").doesNotExist())
+                .andExpect(jsonPath("$.components.schemas.UserRole.enum").isArray())
+                .andExpect(jsonPath("$.components.schemas.TicketStatus.enum").isArray())
+                .andExpect(jsonPath("$.components.schemas.TicketPriority.enum").isArray());
+
+        var swaggerEntry = mockMvc.perform(get("/swagger-ui.html")).andReturn();
+        assertThat(swaggerEntry.getResponse().getStatus()).isGreaterThanOrEqualTo(200).isLessThan(400);
+        mockMvc.perform(get("/swagger-ui/index.html"))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content()
+                        .contentTypeCompatibleWith("text/html"));
+        mockMvc.perform(get("/api/v1/tickets"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void registrationHashesPasswordForcesUserRoleAndRejectsDuplicate() throws Exception {
         String email = email("registered");
         String body = """

@@ -56,7 +56,7 @@ public class SecurityConfiguration {
                 .exceptionHandling(errors -> errors.authenticationEntryPoint(entryPoint)
                         .accessDeniedHandler(deniedHandler))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/v1/auth/**", "/actuator/health", "/v3/api-docs/**",
+                        .requestMatchers("/api/v1/auth/**", "/actuator/health", "/v3/api-docs", "/v3/api-docs/**",
                                 "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .anyRequest().authenticated())
                 .formLogin(form -> form.disable())

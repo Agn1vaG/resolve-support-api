@@ -15,6 +15,7 @@ Organize packages by feature first, then by layer. This keeps ticket-related cod
 - **Repository:** Spring Data JPA access to persisted entities. It should not decide authorization or workflow policy.
 - **Entity:** JPA persistence model and relationships. Avoid putting HTTP concerns in entities.
 - **Security/config:** authenticates stateless bearer JWTs, configures BCrypt, and defines URL and method-level role checks.
+- **OpenAPI documentation:** Springdoc derives the specification from controller contracts, DTO schemas, security annotations, and operation descriptions; Swagger UI provides an interactive client for local exploration.
 - **Exception handling:** a centralized advice maps known failures to consistent HTTP responses without leaking stack traces.
 
 ### Request lifecycle
@@ -79,7 +80,7 @@ This sequence makes responsibilities testable and prevents controllers from beco
 
 ## API boundary and security
 
-Controllers expose the documented `/api/v1` routes and delegate to services. Jakarta Bean Validation checks request shapes; the global advice returns one error format. Pagination and filtering are pushed into repository queries.
+Controllers expose the documented `/api/v1` routes and delegate to services. Jakarta Bean Validation checks request shapes; the global advice returns one error format. Pagination and filtering are pushed into repository queries. Springdoc publishes the OpenAPI document at `/v3/api-docs` and Swagger UI at `/swagger-ui.html`; only those documentation resources are public for unauthenticated exploration.
 
 Authentication uses a signed JWT with a configurable secret and expiry. The filter verifies the signature and expiry, then reloads the current user and authorities from PostgreSQL. Roles are therefore not trusted solely from claims. BCrypt hashes passwords before storage. Older Phase 4 plaintext values do not match BCrypt and must be reset; they are never accepted as valid passwords.
 
