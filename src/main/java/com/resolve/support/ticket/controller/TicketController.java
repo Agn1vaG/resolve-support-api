@@ -24,6 +24,7 @@ import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -87,7 +88,7 @@ public class TicketController {
             @ApiResponse(responseCode = "403", description = "Requested owner/assignee filter is outside the caller's scope", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
     })
     public Page<TicketSummaryResponse> getAll(
-            @PageableDefault(size = 20, sort = "createdAt") Pageable pageable,
+            @ParameterObject @PageableDefault(size = 20, sort = "createdAt") Pageable pageable,
             @Parameter(description = "Filter by ticket status")
             @RequestParam(required = false) TicketStatus status,
             @Parameter(description = "Filter by ticket priority")
@@ -155,7 +156,7 @@ public class TicketController {
     })
     public Page<TicketSummaryResponse> getCreatedBy(
             @PathVariable Long userId,
-            @PageableDefault(size = 20, sort = "createdAt") Pageable pageable) {
+            @ParameterObject @PageableDefault(size = 20, sort = "createdAt") Pageable pageable) {
         return ticketService.getCreatedBy(userId, pageable).map(ticketMapper::toSummary);
     }
 
@@ -170,7 +171,7 @@ public class TicketController {
     })
     public Page<TicketSummaryResponse> getAssignedTo(
             @PathVariable Long agentId,
-            @PageableDefault(size = 20, sort = "createdAt") Pageable pageable) {
+            @ParameterObject @PageableDefault(size = 20, sort = "createdAt") Pageable pageable) {
         return ticketService.getAssignedTo(agentId, pageable).map(ticketMapper::toSummary);
     }
 }

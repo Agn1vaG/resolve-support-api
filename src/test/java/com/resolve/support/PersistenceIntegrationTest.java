@@ -1,5 +1,6 @@
 package com.resolve.support;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.resolve.support.account.entity.User;
 import com.resolve.support.account.entity.UserRole;
@@ -29,6 +30,11 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.util.HashSet;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -216,6 +222,64 @@ class PersistenceIntegrationTest {
                 .andExpect(jsonPath("$[0].newStatus").value("OPEN"))
                 .andExpect(jsonPath("$[1].oldStatus").value("OPEN"))
                 .andExpect(jsonPath("$[1].newStatus").value("IN_PROGRESS"));
+    }
+
+    @Test
+    void ticketPaginationSupportsDefaultsCustomPagesSortingAndRejectsInvalidProperties() throws Exception {
+        User creator = userRepository.findByEmail("admin@example.com").orElseThrow();
+        Ticket oldest = ticketRepository.saveAndFlush(new Ticket("Oldest ticket", "Details", TicketStatus.OPEN,
+                TicketPriority.LOW, creator));
+        Ticket middle = ticketRepository.saveAndFlush(new Ticket("Middle ticket", "Details", TicketStatus.OPEN,
+                TicketPriority.MEDIUM, creator));
+        Ticket newest = ticketRepository.saveAndFlush(new Ticket("Newest ticket", "Details", TicketStatus.OPEN,
+                TicketPriority.HIGH, creator));
+
+        jdbcTemplate.update("UPDATE tickets SET created_at = ? WHERE id = ?",
+                Timestamp.from(Instant.parse("2026-01-01T00:00:00Z")), oldest.getId());
+        jdbcTemplate.update("UPDATE tickets SET created_at = ? WHERE id = ?",
+                Timestamp.from(Instant.parse("2026-01-02T00:00:00Z")), middle.getId());
+        jdbcTemplate.update("UPDATE tickets SET created_at = ? WHERE id = ?",
+                Timestamp.from(Instant.parse("2026-01-03T00:00:00Z")), newest.getId());
+
+        mockMvc.perform(get("/api/v1/tickets"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.number").value(0))
+                .andExpect(jsonPath("$.size").value(20))
+                .andExpect(jsonPath("$.totalElements").value(3));
+
+        mockMvc.perform(get("/api/v1/tickets").param("page", "1").param("size", "1")
+                        .param("sort", "createdAt,desc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.number").value(1))
+                .andExpect(jsonPath("$.size").value(1))
+                .andExpect(jsonPath("$.content[0].title").value("Middle ticket"));
+
+        mockMvc.perform(get("/api/v1/tickets").param("sort", "missingProperty,desc"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void openApiDocumentsPageableArgumentsAsSeparateQueryParameters() throws Exception {
+        JsonNode openApi = objectMapper.readTree(mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString());
+
+        assertPageableQueryParameters(openApi, "/api/v1/tickets");
+        assertPageableQueryParameters(openApi, "/api/v1/tickets/created-by/{userId}");
+        assertPageableQueryParameters(openApi, "/api/v1/tickets/assigned-to/{agentId}");
+        assertPageableQueryParameters(openApi, "/api/v1/users");
+        assertPageableQueryParameters(openApi, "/api/v1/admin/users");
+    }
+
+    private void assertPageableQueryParameters(JsonNode openApi, String path) {
+        JsonNode parameters = openApi.at("/paths/" + path.replace("/", "~1") + "/get/parameters");
+        Set<String> queryNames = new HashSet<>();
+        parameters.forEach(parameter -> {
+            if ("query".equals(parameter.path("in").asText())) {
+                queryNames.add(parameter.path("name").asText());
+            }
+        });
+        assertThat(queryNames).contains("page", "size", "sort").doesNotContain("pageable");
     }
 
     @Test

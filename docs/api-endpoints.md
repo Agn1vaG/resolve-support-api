@@ -76,7 +76,7 @@ Invalid credentials return a generic `401 Unauthorized` response.
 |---|---|---|
 | `POST /api/v1/tickets` | USER, ADMIN | `CreateTicketRequest`; creator from JWT. Returns `TicketResponse`, `201`. |
 | `GET /api/v1/tickets/{id}` | Creator, assigned agent, ADMIN | Returns `TicketResponse`, `200`. |
-| `GET /api/v1/tickets` | Authenticated, role-scoped | `page`, `size` (max 100), `sort`, optional `status`, `priority`, `assigneeId`, `creatorId`, `createdFrom`, `createdTo`. Returns a page of summaries, `200`. |
+| `GET /api/v1/tickets` | Authenticated, role-scoped | Separate query parameters: `page` (default 0), `size` (default 20, max 100), and `sort` (for example `sort=createdAt,desc`), plus optional `status`, `priority`, `assigneeId`, `creatorId`, `createdFrom`, `createdTo`. Returns a page of summaries, `200`. |
 | `PUT /api/v1/tickets/{id}` | ADMIN | Partial `title`, `description`, and/or `priority`; omitted fields stay unchanged. Returns `TicketResponse`, `200`. |
 | `PATCH /api/v1/tickets/{id}/assign` | ADMIN | `{"agentId":42}` to assign or `{"agentId":null}` to unassign. Returns `TicketResponse`, `200`. |
 | `PATCH /api/v1/tickets/{id}/status` | ADMIN, assigned AGENT | `{"status":"IN_PROGRESS"}`. Returns `TicketResponse`, `200`. |
@@ -99,6 +99,8 @@ Ticket response example:
   "assignee":null,"createdAt":"2026-11-09T10:00:00Z","updatedAt":"2026-11-09T10:00:00Z"
 }
 ```
+
+Ticket sorting uses Java entity property names, including `id`, `title`, `status`, `priority`, `createdAt`, and `updatedAt`. Invalid sort properties return `400 Bad Request`. The same separate `page`, `size`, and `sort` query parameters are available on the paged ticket-by-creator, ticket-by-agent, user-list, and admin-user-list endpoints.
 
 The status transition rules are `OPEN -> IN_PROGRESS`, `IN_PROGRESS -> RESOLVED|OPEN`, and `RESOLVED -> CLOSED|IN_PROGRESS`; `CLOSED` is terminal. Repeating the current status is a no-op. Invalid transitions return `400`. Invalid enum and date values also return `400`. USER and AGENT list queries remain scoped to their own tickets even when filters are supplied.
 

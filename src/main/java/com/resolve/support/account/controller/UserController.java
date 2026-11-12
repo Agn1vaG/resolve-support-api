@@ -17,6 +17,7 @@ import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -77,7 +78,7 @@ public class UserController {
             @ApiResponse(responseCode = "401", description = "Authentication required", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
             @ApiResponse(responseCode = "403", description = "Administrator role required", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
     })
-    public Page<UserResponse> getAll(@PageableDefault(size = 20, sort = "createdAt") Pageable pageable) {
+    public Page<UserResponse> getAll(@ParameterObject @PageableDefault(size = 20, sort = "createdAt") Pageable pageable) {
         return userService.getAll(pageable).map(userMapper::toResponse);
     }
 

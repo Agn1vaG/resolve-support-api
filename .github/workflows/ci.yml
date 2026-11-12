@@ -28,6 +28,15 @@ jobs:
       - name: Run Maven verification
         run: ./mvnw --batch-mode --no-transfer-progress clean verify
 
+      - name: Validate Docker Compose configuration
+        env:
+          POSTGRES_PASSWORD: ci-placeholder-only
+          JWT_SECRET_BASE64: Y2ktcGxhY2Vob2xkZXItc2VjcmV0LW9ubHktZm9yLWNvbmZpZw==
+        run: docker compose config --quiet
+
+      - name: Validate Docker image build
+        run: docker build --tag resolve-support-api:ci .
+
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4

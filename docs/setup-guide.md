@@ -1,5 +1,54 @@
 # Local Setup Guide
 
+## Run with Docker Compose
+
+Docker Desktop (including Docker Compose v2) is the only local prerequisite for this path. It provides the Java 21 build environment, the Java runtime, and PostgreSQL in containers; a host JDK, Maven installation, and PostgreSQL installation are not required. The first image build downloads Maven dependencies and container images, so it needs network access. No registry account or paid service is used.
+
+Copy `.env.example` to `.env`, then replace `POSTGRES_PASSWORD` and `JWT_SECRET_BASE64` with local values. Generate the JWT value from at least 32 cryptographically random bytes and encode them as Base64. For example, in PowerShell:
+
+```powershell
+Copy-Item .env.example .env
+$jwtBytes = New-Object byte[] 32
+$rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+$rng.GetBytes($jwtBytes)
+[Convert]::ToBase64String($jwtBytes)
+```
+
+Paste the generated Base64 value into `.env` as `JWT_SECRET_BASE64`, and set a local `POSTGRES_PASSWORD` there as well. `.env` is ignored by Git and excluded from the Docker build context. The Compose file passes the database's local credentials to the API and sets `DB_URL` to `jdbc:postgresql://postgres:5432/<database>`; `postgres` is the Compose service hostname. The `DB_URL` value in `.env.example` remains for running the app directly on the host.
+
+From the project root, build and start both services:
+
+```powershell
+docker compose up --build -d
+```
+
+Compose waits for PostgreSQL's `pg_isready` health check before starting the API. Flyway applies the checked-in migrations during API startup, and Hibernate validates the resulting schema (`ddl-auto: validate`). The API also has a health check using `/actuator/health`.
+
+- API: `http://localhost:8080` (or the configured `SERVER_PORT`).
+- Swagger UI: `http://localhost:8080/swagger-ui.html`.
+- OpenAPI JSON: `http://localhost:8080/v3/api-docs`.
+- PostgreSQL tools can connect on `localhost:5432` (or `POSTGRES_LOCAL_PORT`); the port is bound to loopback only.
+
+Useful lifecycle and inspection commands:
+
+```powershell
+docker compose ps
+docker compose logs -f api postgres
+docker compose restart
+docker compose up --build -d
+docker compose down
+```
+
+`docker compose down` stops and removes containers and the Compose network, while the named `resolve-postgres-data` volume remains intact. PostgreSQL data survives restarts and container recreation. To intentionally reset all local database data, run:
+
+```powershell
+docker compose down --volumes
+```
+
+**This permanently deletes the local PostgreSQL volume and all data in it.** The next `docker compose up --build -d` initializes an empty database and reruns Flyway migrations.
+
+If startup fails, check `docker compose ps` and `docker compose logs -f postgres api`. Common causes include missing/placeholder JWT secrets, an unset database password, a host port already in use, insufficient memory allocated to Docker Desktop, or a slow first build. The API will not start until PostgreSQL reports healthy. If health checks remain unhealthy, verify that the database container can initialize with the configured `POSTGRES_*` values. Do not change Hibernate to create tables; Flyway owns schema changes.
+
 ## Prerequisites
 
 - Java Development Kit (JDK) 21.
@@ -116,7 +165,7 @@ The PostgreSQL integration tests use Testcontainers and are skipped when Docker 
 
 ## Continuous integration
 
-GitHub Actions runs `.github/workflows/ci.yml` on pushes to `main` and pull requests targeting `main`. The job installs Temurin Java 21, caches Maven dependencies, runs `./mvnw --batch-mode --no-transfer-progress clean verify` on Ubuntu, and uploads Surefire XML reports even when the build fails. GitHub-hosted Ubuntu runners provide Docker for Testcontainers; CI does not depend on local PostgreSQL credentials because integration tests start their own PostgreSQL container.
+GitHub Actions runs `.github/workflows/ci.yml` on pushes to `main` and pull requests targeting `main`. The job installs Temurin Java 21, caches Maven dependencies, runs `./mvnw --batch-mode --no-transfer-progress clean verify` on Ubuntu, validates the Compose configuration, builds the Docker image without publishing it, and uploads Surefire XML reports even when the build fails. GitHub-hosted Ubuntu runners provide Docker for Testcontainers; CI does not depend on local PostgreSQL credentials because integration tests start their own PostgreSQL container.
 
 ## What happens on startup
 
